@@ -173,8 +173,11 @@ class KittiMonoDataset(NuScenesMonoDataset):
                                                     submission_prefix)
         elif 'pts_bbox' in outputs[0] or 'img_bbox' in outputs[0] or \
                 'img_bbox2d' in outputs[0]:
+            # pgd breakpoints, len(outputs) = 3769
+            # outputs[0]: dict(['img_bbox', 'img_bbox2d'])
             result_files = dict()
             for name in outputs[0]:
+                # len(results_) = 3769,  of 'img_bbox' or 'img_bbox2d'
                 results_ = [out[name] for out in outputs]
                 pklfile_prefix_ = pklfile_prefix + name
                 if submission_prefix is not None:
@@ -186,6 +189,7 @@ class KittiMonoDataset(NuScenesMonoDataset):
                         results_, self.CLASSES, pklfile_prefix_,
                         submission_prefix_)
                 else:
+                    # for 'img_bbox'
                     result_files_ = self.bbox2result_kitti(
                         results_, self.CLASSES, pklfile_prefix_,
                         submission_prefix_)
@@ -194,6 +198,7 @@ class KittiMonoDataset(NuScenesMonoDataset):
             result_files = self.bbox2result_kitti(outputs, self.CLASSES,
                                                   pklfile_prefix,
                                                   submission_prefix)
+        # type(result_files), dict_keys(['img_bbox', 'img_bbox2d'])
         return result_files, tmp_dir
 
     def evaluate(self,

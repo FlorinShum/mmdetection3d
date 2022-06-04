@@ -4,6 +4,7 @@ from os import path as osp
 
 from tools.data_converter import indoor_converter as indoor
 from tools.data_converter import kitti_converter as kitti
+from tools.data_converter import rope3d_converter as rope3d
 from tools.data_converter import lyft_converter as lyft_converter
 from tools.data_converter import nuscenes_converter as nuscenes_converter
 from tools.data_converter.create_gt_database import (
@@ -49,6 +50,30 @@ def kitti_data_prep(root_path,
         relative_path=False,
         mask_anno_path='instances_train.json',
         with_mask=(version == 'mask'))
+
+def rope3d_data_prep(root_path,
+                    info_prefix,
+                    version,
+                    out_dir,
+                    with_plane=False):
+    """Prepare data related to Rope3D dataset.
+
+    Related data consists of '.pkl' files recording basic infos,
+    2D annotations and groundtruth database.
+
+    Args:
+        root_path (str): Path of dataset root.
+        info_prefix (str): The prefix of info filenames.
+        version (str): Dataset version.
+        out_dir (str): Output directory of the groundtruth database info.
+        with_plane (bool, optional): Whether to use plane information.
+            Default: False.
+    """
+    rope3d.create_rope3d_info_file(root_path, info_prefix, with_plane)
+    info_train_path = osp.join(root_path, f'{info_prefix}_infos_train.pkl')
+    info_val_path = osp.join(root_path, f'{info_prefix}_infos_val.pkl')
+    rope3d.export_2d_annotation(root_path, info_train_path)
+    rope3d.export_2d_annotation(root_path, info_val_path)
 
 
 def nuscenes_data_prep(root_path,
@@ -301,3 +326,10 @@ if __name__ == '__main__':
             info_prefix=args.extra_tag,
             out_dir=args.out_dir,
             workers=args.workers)
+    elif args.dataset == 'rope3d': 
+        rope3d_data_prep(
+            root_path=args.root_path,
+            info_prefix=args.extra_tag,
+            version=args.version,
+            out_dir=args.out_dir,
+            with_plane=args.with_plane)
