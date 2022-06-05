@@ -69,7 +69,7 @@ def rope3d_data_prep(root_path,
         with_plane (bool, optional): Whether to use plane information.
             Default: False.
     """
-    rope3d.create_rope3d_info_file(root_path, info_prefix, with_plane)
+    # rope3d.create_rope3d_info_file(root_path, info_prefix, with_plane)
     info_train_path = osp.join(root_path, f'{info_prefix}_infos_train.pkl')
     info_val_path = osp.join(root_path, f'{info_prefix}_infos_val.pkl')
     rope3d.export_2d_annotation(root_path, info_train_path)

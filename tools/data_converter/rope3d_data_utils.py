@@ -103,7 +103,7 @@ def get_label_anno(label_path):
     # re-order objects according to put dontcare at last.
     _content, dontcare = [], []
     for obj in content:
-        if 'unkown' in obj[0]:
+        if 'unknown' in obj[0]:
             dontcare.append(obj)
         else:
             _content.append(obj)
@@ -178,15 +178,17 @@ def get_rope3d_image_info(path,
     """
     root_path = Path(path)
     assert isinstance(image_set, list)
+    name2idx = {name: idx for idx, name in enumerate(image_set)}
 
     def map_func(name: str):
         info = {}
         calib_info = {}
-
-        image_info = {'image_name': name}
+        image_info = {'image_id': name2idx[name]}
         annotations = None
         image_info['image_path'] = get_image_path(name, path, training,
                                                   relative_path)
+        image_info['depth_path'] = get_depth_path(name, path, training, 
+                                                    relative_path)
         if with_imageshape:
             img_path = image_info['image_path']
             if relative_path:
@@ -285,14 +287,15 @@ def add_difficulty_to_annos(info):
     is_hard = np.logical_xor(hard_mask, moderate_mask)
 
     for i in range(len(dims)):
-        if is_easy[i]:
-            diff.append(0)
-        elif is_moderate[i]:
-            diff.append(1)
-        elif is_hard[i]:
-            diff.append(2)
-        else:
-            diff.append(-1)
+        # if is_easy[i]:
+        #     diff.append(0)
+        # elif is_moderate[i]:
+        #     diff.append(1)
+        # elif is_hard[i]:
+        #     diff.append(2)
+        # else:
+        #     diff.append(-1)
+        diff.append(0)
     annos['difficulty'] = np.array(diff, np.int32)
     return diff
 

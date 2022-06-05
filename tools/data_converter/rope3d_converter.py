@@ -72,7 +72,7 @@ def create_rope3d_info_file(data_path,
         save_path = Path(data_path)
     else:
         save_path = Path(save_path)
-    kitti_infos_train = get_rope3d_image_info(
+    rope3d_infos_train = get_rope3d_image_info(
         data_path,
         training=True,
         calib=True,
@@ -81,8 +81,8 @@ def create_rope3d_info_file(data_path,
         relative_path=relative_path)
     filename = save_path / f'{pkl_prefix}_infos_train.pkl'
     print(f'Rope3D info train file is saved to {filename}')
-    mmcv.dump(kitti_infos_train, filename)
-    kitti_infos_val = get_rope3d_image_info(
+    mmcv.dump(rope3d_infos_train, filename)
+    rope3d_infos_val = get_rope3d_image_info(
         data_path,
         training=False,
         calib=True,
@@ -91,7 +91,7 @@ def create_rope3d_info_file(data_path,
         relative_path=relative_path)
     filename = save_path / f'{pkl_prefix}_infos_val.pkl'
     print(f'Rope3D info val file is saved to {filename}')
-    mmcv.dump(kitti_infos_val, filename)
+    mmcv.dump(rope3d_infos_val, filename)
 
 def export_2d_annotation(root_path, info_path, mono3d=True):
     """Export 2d annotation from the info file and raw data.
@@ -119,8 +119,9 @@ def export_2d_annotation(root_path, info_path, mono3d=True):
         coco_2d_dict['images'].append(
             dict(
                 file_name=info['image']['image_path'],
-                id=info['image']['image_name'],
+                id=info['image']['image_id'],
                 cam_intrinsic=info['calib']['P2'],
+                gplane=info['gplane'],
                 width=width,
                 height=height))
         for coco_info in coco_infos:
@@ -153,6 +154,16 @@ def get_2d_boxes(info, occluded, mono3d=True):
     """
     # Get calibration information
     P2 = info['calib']['P2']
+    # Get ground-gplane information and rotation matrix.
+    # for roadside dataset only.
+    GP = info['gplane']
+    a, b, c = - float(GP[0]), - float(GP[1]), - float(GP[2])
+    r12, r22, r32 = a, b, c
+    r11, r21, r31 = 1, - a / b, 0
+    div = a ** 2 + b ** 2
+    r13, r23, r33 = (- a * c) / div, (-b * c) / div, 1
+    R_p = np.array([[r11, r12, r13], [r21, r22, r23], [r31, r32, r33]])
+    R_p = R_p / np.linalg.norm(R_p, axis=0)
 
     repro_recs = []
     # if no annotations in info (test dataset), then return
@@ -176,9 +187,9 @@ def get_2d_boxes(info, occluded, mono3d=True):
     for ann_idx, ann_rec in enumerate(ann_recs):
         # Augment sample_annotation with token information.
         ann_rec['sample_annotation_token'] = \
-            f"{info['image']['image_name']}.{ann_idx}"
-        ann_rec['sample_data_token'] = info['image']['image_name']
-        sample_data_token = info['image']['image_name']
+            f"{info['image']['image_id']}.{ann_idx}"
+        ann_rec['sample_data_token'] = info['image']['image_id']
+        sample_data_token = info['image']['image_id']
 
         loc = ann_rec['location'][np.newaxis, :]
         dim = ann_rec['dimensions'][np.newaxis, :]
@@ -200,6 +211,8 @@ def get_2d_boxes(info, occluded, mono3d=True):
             gt_bbox_3d[:, 6], [0.5, 0.5, 0.5],
             axis=1)
         corners_3d = corners_3d[0].T  # (1, 8, 3) -> (3, 8)
+        # perform rotation with ground-plane 
+        corners_3d = np.dot(R_p, corners_3d)
         in_front = np.argwhere(corners_3d[2, :] > 0).flatten()
         corners_3d = corners_3d[:, in_front]
 
@@ -209,7 +222,7 @@ def get_2d_boxes(info, occluded, mono3d=True):
                                     True).T[:, :2].tolist()
 
         # Keep only corners that fall within the image.
-        final_coords = post_process_coords(corner_coords)
+        final_coords = post_process_coords(corner_coords, imsize=(1920, 1080))
 
         # Skip if the convex hull of the re-projected corners
         # does not intersect the image canvas.
