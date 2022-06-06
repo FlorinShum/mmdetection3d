@@ -103,7 +103,7 @@ def export_2d_annotation(root_path, info_path, mono3d=True):
             Default: True.
     """
     # get bbox annotations for camera
-    kitti_infos = mmcv.load(info_path)
+    rope3d_infos = mmcv.load(info_path)
     cat2Ids = [
         dict(id=rope3d_categories.index(cat_name), name=cat_name)
         for cat_name in rope3d_categories
@@ -111,7 +111,7 @@ def export_2d_annotation(root_path, info_path, mono3d=True):
     coco_ann_id = 0
     coco_2d_dict = dict(annotations=[], images=[], categories=cat2Ids)
     from os import path as osp
-    for info in mmcv.track_iter_progress(kitti_infos):
+    for info in mmcv.track_iter_progress(rope3d_infos):
         coco_infos = get_2d_boxes(info, occluded=[0, 1, 2, 3], mono3d=mono3d)
         (height, width,
          _) = mmcv.imread(osp.join(root_path,
@@ -156,13 +156,13 @@ def get_2d_boxes(info, occluded, mono3d=True):
     P2 = info['calib']['P2']
     # Get ground-gplane information and rotation matrix.
     # for roadside dataset only.
-    GP = info['gplane']
-    a, b, c = - float(GP[0]), - float(GP[1]), - float(GP[2])
-    r12, r22, r32 = a, b, c
-    r11, r21, r31 = 1, - a / b, 0
+    GP = info['gplane'][np.newaxis, :].astype(np.float128)
+    a, b, c = - GP[:, 0], - GP[:, 1], - GP[:, 2]
+    y_rot = np.stack([a, b, c], axis=0)
+    x_rot = np.stack([np.ones_like(a), - a / b, np.zeros_like(a)], axis=0)
     div = a ** 2 + b ** 2
-    r13, r23, r33 = (- a * c) / div, (-b * c) / div, 1
-    R_p = np.array([[r11, r12, r13], [r21, r22, r23], [r31, r32, r33]])
+    z_rot = np.stack([(- a * c) / div, (-b * c) / div, np.ones_like(a)], axis=0)
+    R_p = np.stack([x_rot, y_rot, z_rot], axis=0)
     R_p = R_p / np.linalg.norm(R_p, axis=0)
 
     repro_recs = []
@@ -205,19 +205,19 @@ def get_2d_boxes(info, occluded, mono3d=True):
 
         # Filter out the corners that are not in front of the calibrated
         # sensor.
-        corners_3d = box_np_ops.center_to_corner_box3d(
+        corners_3d = box_np_ops.rope_center_to_corner_box3d(
             gt_bbox_3d[:, :3],
             gt_bbox_3d[:, 3:6],
             gt_bbox_3d[:, 6], [0.5, 0.5, 0.5],
+            R_p=R_p,
             axis=1)
         corners_3d = corners_3d[0].T  # (1, 8, 3) -> (3, 8)
-        # perform rotation with ground-plane 
-        corners_3d = np.dot(R_p, corners_3d)
         in_front = np.argwhere(corners_3d[2, :] > 0).flatten()
         corners_3d = corners_3d[:, in_front]
 
         # Project 3d box to 2d.
         camera_intrinsic = P2
+        # view_points(corners_3d, camera_intrinsic, True).T[:, :2]
         corner_coords = view_points(corners_3d, camera_intrinsic,
                                     True).T[:, :2].tolist()
 
@@ -241,7 +241,7 @@ def get_2d_boxes(info, occluded, mono3d=True):
             repro_rec['bbox_cam3d'] = np.concatenate(
                 [loc_3d, dim, rot],
                 axis=1).astype(np.float32).squeeze().tolist()
-            repro_rec['velo_cam3d'] = -1  # no velocity in KITTI
+            repro_rec['velo_cam3d'] = -1  # no velocity in rope3d
 
             center3d = np.array(loc).reshape([1, 3])
             center2d = points_cam2img(
@@ -252,7 +252,7 @@ def get_2d_boxes(info, occluded, mono3d=True):
             if repro_rec['center2d'][2] <= 0:
                 continue
 
-            repro_rec['attribute_name'] = -1  # no attribute in KITTI
+            repro_rec['attribute_name'] = -1  # no attribute in rope3d
             repro_rec['attribute_id'] = -1
 
         repro_recs.append(repro_rec)
