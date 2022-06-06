@@ -163,7 +163,7 @@ def get_2d_boxes(info, occluded, mono3d=True):
     div = a ** 2 + b ** 2
     z_rot = np.stack([(- a * c) / div, (-b * c) / div, np.ones_like(a)], axis=0)
     R_p = np.stack([x_rot, y_rot, z_rot], axis=0)
-    R_p = R_p / np.linalg.norm(R_p, axis=0)
+    R_p = R_p / np.linalg.norm(R_p, axis=1)
 
     repro_recs = []
     # if no annotations in info (test dataset), then return
