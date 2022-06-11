@@ -138,6 +138,15 @@ def _extend_matrix(mat):
     mat = np.concatenate([mat, np.array([[0., 0., 0., 1.]])], axis=0)
     return mat
 
+def calc_rotp(norm_vec):
+    a, b, c = float(norm_vec[0]), float(norm_vec[1]), float(norm_vec[2])
+    r12, r22, r32 = a, b, c
+    r11, r21, r31 = 1, - a / b, 0
+    div = a ** 2 + b ** 2
+    r13, r23, r33 = (- a * c) / div, (-b * c) / div, 1
+    R = np.array([[r11, r12, r13], [r21, r22, r23], [r31, r32, r33]], dtype=np.float64)
+    return R / np.linalg.norm(R, axis=0)
+
 def get_rope3d_image_info(path,
                          training=True,
                          label_info=True,
@@ -147,7 +156,8 @@ def get_rope3d_image_info(path,
                          extend_matrix=True,
                          num_worker=8,
                          relative_path=True,
-                         with_imageshape=True):
+                         with_imageshape=True,
+                         scale=1):
     """
     rope3d annotation format version 2:
     {
@@ -202,6 +212,15 @@ def get_rope3d_image_info(path,
             annotations = get_label_anno(label_path)
         info['image'] = image_info
 
+        if with_plane:
+            plane_path = get_gplane_path(name, path, training, relative_path=False)
+            handler = open(plane_path, 'r')
+            lines = [line.strip().split(' ') for line in handler.readlines()]
+            coef = list(map(lambda x: float(x), lines[0]))
+            info['gplane'] = np.array(coef, dtype=np.float32)
+
+        R_p = calc_rotp(- info['gplane'])
+
         if calib:
             calib_path = get_calib_path(
                 name, path, training, relative_path=False)
@@ -209,17 +228,21 @@ def get_rope3d_image_info(path,
                 lines = f.readlines()
             P2 = np.array([float(info) for info in lines[0].split(' ')[1:13]
                            ]).reshape([3, 4])            
-            if extend_matrix:
-                P2 = _extend_matrix(P2)
-            calib_info['P2'] = P2
+            # transform cam-intrinstic with plane-rotation
+            view_pad, R_pad, scale_pad = np.eye(4), np.eye(4), np.eye(4)
+            view_pad[:3, :4] = P2
+            R_pad[:3, :3] = R_p
+            view_pad = np.dot(view_pad, R_pad)
+            if scale != 1:
+                scale_pad[:, 0] /= scale 
+                scale_pad[:, 1] /= scale 
+                view_pad = np.dot(scale_pad, view_pad)
+            calib_info['P2'] = view_pad
             info['calib'] = calib_info
-
-        if with_plane:
-            plane_path = get_gplane_path(name, path, training, relative_path=False)
-            handler = open(plane_path, 'r')
-            lines = [line.strip().split(' ') for line in handler.readlines()]
-            coef = list(map(lambda x: float(x), lines[0]))
-            info['gplane'] = np.array(coef, dtype=np.float32)
+        
+        # transform center from rope-coord to kitti-coord
+        # (3, 3) \dot (3, n) -> (3, n) -> (n, 3)
+        annotations['location'] = np.dot(np.linalg.inv(R_p), annotations['location'].transpose(1, 0)).transpose(1, 0)
 
         if annotations is not None:
             info['annos'] = annotations
@@ -230,29 +253,6 @@ def get_rope3d_image_info(path,
         image_infos = executor.map(map_func, image_set)
 
     return list(image_infos)
-
-def kitti_anno_to_label_file(annos, folder):
-    folder = Path(folder)
-    for anno in annos:
-        image_idx = anno['metadata']['image_idx']
-        label_lines = []
-        for j in range(anno['bbox'].shape[0]):
-            label_dict = {
-                'name': anno['name'][j],
-                'alpha': anno['alpha'][j],
-                'bbox': anno['bbox'][j],
-                'location': anno['location'][j],
-                'dimensions': anno['dimensions'][j],
-                'rotation_y': anno['rotation_y'][j],
-                'score': anno['score'][j],
-            }
-            label_line = kitti_result_line(label_dict)
-            label_lines.append(label_line)
-        label_file = folder / f'{get_image_index_str(image_idx)}.txt'
-        label_str = '\n'.join(label_lines)
-        with open(label_file, 'w') as f:
-            f.write(label_str)
-
 
 def add_difficulty_to_annos(info):
     min_height = [40, 25,

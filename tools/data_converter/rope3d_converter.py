@@ -11,8 +11,7 @@ from .rope3d_data_utils import get_rope3d_image_info
 from .nuscenes_converter import post_process_coords
 
 rope3d_categories = ('car', 'pedestrian', 'motorcyclist', 'cyclist', 
-                    'van', 'bus', 'tricyclist', 'truck', 'barrow',
-                    'trafficcone', 'triangleplate')
+                    'van', 'bus', 'tricyclist', 'truck', 'trafficcone')
 
 def convert_to_kitti_info_version2(info):
     """convert kitti info v1 to v2 if possible.
@@ -205,11 +204,10 @@ def get_2d_boxes(info, occluded, mono3d=True):
 
         # Filter out the corners that are not in front of the calibrated
         # sensor.
-        corners_3d = box_np_ops.rope_center_to_corner_box3d(
+        corners_3d = box_np_ops.center_to_corner_box3d(
             gt_bbox_3d[:, :3],
             gt_bbox_3d[:, 3:6],
             gt_bbox_3d[:, 6], [0.5, 0.5, 0.5],
-            R_p=R_p,
             axis=1)
         corners_3d = corners_3d[0].T  # (1, 8, 3) -> (3, 8)
         in_front = np.argwhere(corners_3d[2, :] > 0).flatten()
